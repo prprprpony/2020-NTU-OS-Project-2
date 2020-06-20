@@ -31,6 +31,8 @@
 
 
 #define BUF_SIZE 512
+//add
+#define PAGE_NUM 128
 
 
 
@@ -59,14 +61,33 @@ static mm_segment_t old_fs;
 static ksocket_t sockfd_cli;//socket to the master server
 static struct sockaddr_in addr_srv; //address of the master server
 
+
+//add for mmap
+static int my_mmap(struct file *filp, struct vm_area_struct *vma);
+void mmap_open(struct vm_area_struct *vmarea){}
+void mmap_close(struct vm_area_struct *vmarea){}
+
+
+
 //file operations
 static struct file_operations slave_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = slave_ioctl,
 	.open = slave_open,
 	.read = receive_msg,
-	.release = slave_close
+	.release = slave_close,
+	//add for mmap
+	.mmap = my_mmap
 };
+
+
+//add for mmap
+struct vm_operations_struct mmap_vm_ops = {
+    .open = mmap_open,
+    .close = mmap_close
+};
+
+
 
 //device info
 static struct miscdevice slave_dev = {
@@ -98,14 +119,16 @@ static void __exit slave_exit(void)
 	debugfs_remove(file1);
 }
 
-
+//add
 int slave_close(struct inode *inode, struct file *filp)
 {
+	kfree(filp->private_data);
 	return 0;
 }
 
 int slave_open(struct inode *inode, struct file *filp)
 {
+	filp->private_data = kmalloc(PAGE_NUM * PAGE_SIZE, GFP_KERNEL);
 	return 0;
 }
 static long slave_ioctl(struct file *file, unsigned int ioctl_num, unsigned long ioctl_param)
@@ -118,6 +141,8 @@ static long slave_ioctl(struct file *file, unsigned int ioctl_num, unsigned long
 	char *tmp, ip[20], buf[BUF_SIZE];
 	struct page *p_print;
 	unsigned char *px;
+	//add
+	size_t offset = 0, rev = 0;
 
     pgd_t *pgd;
 	p4d_t *p4d;
@@ -162,8 +187,15 @@ static long slave_ioctl(struct file *file, unsigned int ioctl_num, unsigned long
 			printk("kfree(tmp)");
 			ret = 0;
 			break;
-		case slave_IOCTL_MMAP:
-
+		case slave_IOCTL_MMAP://add for mmap
+			while (offset < PAGE_NUM * PAGE_SIZE){
+				rev = krecv(sockfd_cli, file->private_data + offset, BUF_SIZE, 0);
+				if (rev == 0){
+					break;
+				}
+				offset += rev;
+			}
+			ret = offset;
 			break;
 
 		case slave_IOCTL_EXIT:
@@ -201,6 +233,18 @@ ssize_t receive_msg(struct file *filp, char *buf, size_t count, loff_t *offp )
 	return len;
 }
 
+
+//add for mmap
+static int my_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma->vm_end - vma->vm_start, vma->vm_page_prot))
+		return -EIO;
+	vma->vm_flags |= VM_RESERVED;
+	vma->vm_private_data = filp->private_data;
+	vma->vm_ops = &mmap_vm_ops;
+	mmap_open(vma);
+	return 0;
+}
 
 
 

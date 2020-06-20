@@ -29,6 +29,8 @@
 #define master_IOCTL_MMAP 0x12345678
 #define master_IOCTL_EXIT 0x12345679
 #define BUF_SIZE 512
+//add
+#define PAGE_NUM 128
 
 typedef struct socket * ksocket_t;
 
@@ -58,13 +60,29 @@ static mm_segment_t old_fs;
 static int addr_len;
 //static  struct mmap_info *mmap_msg; // pointer to the mapped data in this device
 
+
+//add for mmap
+static int my_mmap(struct file *filp, struct vm_area_struct *vma);
+void mmap_open(struct vm_area_struct *vmarea){}
+void mmap_close(struct vm_area_struct *vmarea){}
+
+
+
 //file operations
 static struct file_operations master_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = master_ioctl,
 	.open = master_open,
 	.write = send_msg,
-	.release = master_close
+	.release = master_close,
+	//add for mmap
+	.mmap = my_mmap
+};
+
+//add for mmap
+struct vm_operations_struct mmap_vm_ops = {
+    .open = mmap_open,
+    .close = mmap_close
 };
 
 //device info
@@ -135,13 +153,16 @@ static void __exit master_exit(void)
 	debugfs_remove(file1);
 }
 
+//add
 int master_close(struct inode *inode, struct file *filp)
 {
+	kfree(filp->private_data);
 	return 0;
 }
 
 int master_open(struct inode *inode, struct file *filp)
 {
+	filp->private_data = kmalloc(PAGE_NUM * PAGE_SIZE, GFP_KERNEL);
 	return 0;
 }
 
@@ -174,7 +195,8 @@ static long master_ioctl(struct file *file, unsigned int ioctl_num, unsigned lon
 			kfree(tmp);
 			ret = 0;
 			break;
-		case master_IOCTL_MMAP:
+		case master_IOCTL_MMAP://add for mmap
+			ret = ksend(sockfd_cli, file->private_data, ioctl_param, 0);
 			break;
 		case master_IOCTL_EXIT:
 			if(kclose(sockfd_cli) == -1)
@@ -209,6 +231,19 @@ static ssize_t send_msg(struct file *file, const char __user *buf, size_t count,
 
 	return count;
 
+}
+
+
+//add for mmap
+static int my_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma->vm_end - vma->vm_start, vma->vm_page_prot))
+		return -EIO;
+	vma->vm_flags |= VM_RESERVED;
+	vma->vm_private_data = filp->private_data;
+	vma->vm_ops = &mmap_vm_ops;
+	mmap_open(vma);
+	return 0;
 }
 
 
