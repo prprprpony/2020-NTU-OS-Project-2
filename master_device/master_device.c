@@ -176,7 +176,7 @@ static long master_ioctl(struct file *file, unsigned int ioctl_num, unsigned lon
 	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
-    pte_t *ptep, pte;
+    pte_t *ptep;
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	switch(ioctl_num){
@@ -212,8 +212,7 @@ static long master_ioctl(struct file *file, unsigned int ioctl_num, unsigned lon
 			pud = pud_offset(p4d, ioctl_param);
 			pmd = pmd_offset(pud, ioctl_param);
 			ptep = pte_offset_kernel(pmd , ioctl_param);
-			pte = *ptep;
-			printk("master: %lX\n", pte);
+			printk("master : %lX\n", pte_val(*ptep));
 			ret = 0;
 			break;
 	}

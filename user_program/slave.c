@@ -36,7 +36,7 @@ int main (int argc, char* argv[])
 	for (int i = 1; i <= file_num; i++){
 		file_size = 0;
 		strcpy(file_name, argv[i + 1]);
-		fprintf(stderr, "now %s\n", file_name);
+		//fprintf(stderr, "now %s\n", file_name);
 	    
 
 		if( (dev_fd = open("/dev/slave_device", O_RDWR)) < 0)//should be O_RDWR for PROT_WRITE when mmap()
@@ -57,11 +57,10 @@ int main (int argc, char* argv[])
 			return 1;
 		}
 
-	    write(1, "ioctl success\n", 14);
+	    //write(1, "ioctl success\n", 14);
 
 	    //
 	    void *src, *dst;
-
 	    int rev;
 
 		switch(method[0])
@@ -76,7 +75,6 @@ int main (int argc, char* argv[])
 				break;
 			case 'm'://add for mmap
 				while ((rev = ioctl(dev_fd, 0x12345678)) != 0){
-					fprintf(stderr, "rev = %d, file_size = %d\n", rev, file_size);
 					if ((src = mmap(NULL, PAGE_NUM * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, dev_fd, file_size)) == (void *) -1){
 						perror("mapping slave device");
 						return 1;
@@ -88,6 +86,10 @@ int main (int argc, char* argv[])
 					ftruncate(file_fd, file_size + rev);
 					memcpy(dst, src, rev);
 
+					//print page descriptor of slave device
+					if (file_size == 0)
+						ioctl(dev_fd, 0x12345676, (unsigned long) src);
+
 					if (munmap(src, PAGE_NUM * PAGE_SIZE) == -1){
 						perror("munmap slave device");
 						return 1;
@@ -98,32 +100,20 @@ int main (int argc, char* argv[])
 					}
 					file_size += rev;
 				}
-				//fprintf(stderr, "rev = %d\n", rev);
-				ioctl(dev_fd, 0x12345676, (unsigned long) src);
 	            break;
-
 		}
 		total_size += file_size;
-		fprintf(stderr, "total_size = %d\n", total_size);
 		close(file_fd);
-
 
 		if(ioctl(dev_fd, 0x12345679) == -1)// end receiving data, close the connection
 		{
 			perror("ioclt client exits error\n");
 			return 1;
 		}
-
-
-	}//for loop end
-
-
+	}
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
 	printf("Transmission time: %lf ms, Total file size: %d bytes\n", trans_time, total_size);
-
-
-	//close(file_fd);
 	close(dev_fd);
 	return 0;
 }

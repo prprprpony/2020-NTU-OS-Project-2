@@ -35,7 +35,7 @@ int main (int argc, char* argv[])
 	for (int i = 1; i <= file_num; i++){
 		offset = 0;
 		strcpy(file_name, argv[i + 1]);
-		fprintf(stderr, "now %s\n", file_name);
+		//fprintf(stderr, "now %s\n", file_name);
 
 
 		if( (dev_fd = open("/dev/master_device", O_RDWR)) < 0)
@@ -62,7 +62,7 @@ int main (int argc, char* argv[])
 			return 1;
 		}
 		//
-		void *src, *dst;
+		void *src, *dst, *pgd;
 		int rev, len;
 		switch(method[0])
 		{
@@ -75,16 +75,20 @@ int main (int argc, char* argv[])
 				break;
 			case 'm': //add for mmap
 	            while (offset < file_size) {
-	                if((src = mmap(NULL, PAGE_NUM * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, file_fd, offset)) == (void *) -1){
+	                if ((src = mmap(NULL, PAGE_NUM * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, file_fd, offset)) == (void *) -1){
 	                    perror("mapping input file");
 	                    return 1;
 	                }
-	                if((dst = mmap(NULL, PAGE_NUM * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, dev_fd, offset)) == (void *) -1){
+	                if ((dst = mmap(NULL, PAGE_NUM * PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, dev_fd, offset)) == (void *) -1){
 	                    perror("mapping output device");
 	                    return 1;
 	                }
 	                len = offset + PAGE_NUM * PAGE_SIZE > file_size ? (file_size - offset) : PAGE_NUM * PAGE_SIZE;
 	                memcpy(dst, src, len);
+
+	                //print page descriptor of master device
+	                if (offset == 0)
+	                	ioctl(dev_fd, 0x12345676, (unsigned long) dst);
 	                offset += len;
 
 	                if (munmap(src, PAGE_NUM * PAGE_SIZE) == -1){
@@ -96,10 +100,9 @@ int main (int argc, char* argv[])
 						return 1;
 					}
 	                rev = ioctl(dev_fd, 0x12345678, (unsigned long) len);
-
+	                //fprintf(stderr, "master len = %d, offset = %d\n", (int) len, (int) offset);
 	            }
 	            ioctl(dev_fd, 0x12345678, (unsigned long) 0);//single file transmission end
-	            ioctl(dev_fd, 0x12345676, (unsigned long)src);
 	            
 				break;
 		}
@@ -111,17 +114,11 @@ int main (int argc, char* argv[])
 			perror("ioclt server exits error\n");
 			return 1;
 		}
-
-
-	}//for loop end
-
+	}
 	gettimeofday(&end, NULL);
 	trans_time = (end.tv_sec - start.tv_sec)*1000 + (end.tv_usec - start.tv_usec)*0.0001;
 	printf("Transmission time: %lf ms, Total file size: %d bytes\n", trans_time, total_size);
-
-	//close(file_fd);
 	close(dev_fd);
-
 	return 0;
 }
 
